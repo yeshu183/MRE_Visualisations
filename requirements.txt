@@ -1,0 +1,30 @@
+# Core Scientific Computing
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+
+# Data Loading and Preprocessing
+h5py>=3.8.0
+scikit-image>=0.20.0
+
+# Machine Learning / ELM
+scikit-learn>=1.2.0
+
+# Automatic Differentiation (for physics)
+jax>=0.4.0
+jaxlib>=0.4.0
+
+# Visualization
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Jupyter
+jupyter>=1.0.0
+ipykernel>=6.22.0
+ipywidgets>=8.0.0
+
+# Testing
+pytest>=7.3.0
