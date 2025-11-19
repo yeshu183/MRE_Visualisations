@@ -1,0 +1,17 @@
+{
+  "n_points": 100,
+  "n_wave_neurons": 60,
+  "iterations": 5000,
+  "lr": 0.001,
+  "lr_decay_step": 1500,
+  "lr_decay_gamma": 0.9,
+  "rho_omega2": 400.0,
+  "noise_std": 0.001,
+  "bc_weight": 200.0,
+  "tv_weight": 0.0,
+  "seed": 0,
+  "early_stopping_patience": 1500,
+  "grad_clip_max_norm": 0.1,
+  "mu_min": 0.7,
+  "mu_max": 6.0
+}
