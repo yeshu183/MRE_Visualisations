@@ -47,7 +47,8 @@ def train_inverse_problem(x, u_meas, mu_true, bc_indices, u_bc_vals, config, dev
     lr_decay_step = config.get('lr_decay_step', 1000)
     lr_decay_gamma = config.get('lr_decay_gamma', 0.9)
     rho_omega2 = config['rho_omega2']
-    bc_weight = config['bc_weight']
+    bc_weight = config.get('bc_weight', 0.0)
+    data_weight = config.get('data_weight', 0.0)
     tv_weight = config.get('tv_weight', 0.0)
     grad_clip_max_norm = config.get('grad_clip_max_norm', 1.0)
     early_stopping_patience = config.get('early_stopping_patience', 1000)
@@ -83,6 +84,10 @@ def train_inverse_problem(x, u_meas, mu_true, bc_indices, u_bc_vals, config, dev
     }
     
     print(f"Starting training with {iterations} iterations...")
+    if data_weight > 0:
+        print(f"Using data constraints (weight={data_weight})")
+    if bc_weight > 0:
+        print(f"Using boundary constraints (weight={bc_weight})")
     if tv_weight > 0:
         print(f"Using TV regularization (weight={tv_weight})")
     print()
@@ -91,39 +96,33 @@ def train_inverse_problem(x, u_meas, mu_true, bc_indices, u_bc_vals, config, dev
     for i in range(iterations):
         optimizer.zero_grad()
         
-        # Forward pass
+        # Forward pass with data constraints
         verbose = (i == 0)
         u_pred, mu_pred = model(x, bc_indices, u_bc_vals, rho_omega2, 
-                               bc_weight=bc_weight, verbose=verbose)
+                               bc_weight=bc_weight, 
+                               u_data=u_meas,
+                               data_weight=data_weight,
+                               verbose=verbose)
         
         # Data loss
         loss_data = torch.mean((u_pred - u_meas) ** 2)
         
+        # Compute PDE residual for monitoring
+        phi, phi_lap = model.get_basis_and_laplacian(x)
+        pde_residual = mu_pred * phi_lap + rho_omega2 * phi
+        _, C_u = model.solve_given_mu(x, mu_pred, bc_indices, u_bc_vals, rho_omega2, bc_weight, 
+                                       u_data=u_meas, data_weight=data_weight)
+        pde_loss_val = torch.mean((pde_residual @ C_u) ** 2).item()
+        
         # TV regularization
         tv_loss = torch.mean(torch.abs(mu_pred[1:] - mu_pred[:-1]))
         
-        # Soft boundary penalty: discourage getting too close to clamps
-        # Uses smooth exponential penalty that grows as mu approaches boundaries
-        mu_min_val = config.get('mu_min', 0.7)
-        mu_max_val = config.get('mu_max', 6.0)
-        margin = 0.2  # Start penalizing when within 0.2 of boundary
-        boundary_penalty_weight = 0.01
-        
-        # Lower boundary penalty: exp(-10 * distance_from_lower_bound)
-        dist_to_lower = mu_pred - mu_min_val
-        lower_penalty = torch.mean(torch.exp(-10.0 * torch.clamp(dist_to_lower - margin, min=0.0)))
-        
-        # Upper boundary penalty: exp(-10 * distance_from_upper_bound)
-        dist_to_upper = mu_max_val - mu_pred
-        upper_penalty = torch.mean(torch.exp(-10.0 * torch.clamp(dist_to_upper - margin, min=0.0)))
-        
-        boundary_loss = boundary_penalty_weight * (lower_penalty + upper_penalty)
-        
-        loss_total = loss_data + tv_weight * tv_loss + boundary_loss
+        loss_total = loss_data + tv_weight * tv_loss
         
         # Backward pass
         loss_total.backward()
-        torch.nn.utils.clip_grad_norm_(model.mu_net.parameters(), max_norm=grad_clip_max_norm)
+        if grad_clip_max_norm is not None and grad_clip_max_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.mu_net.parameters(), max_norm=grad_clip_max_norm)
         optimizer.step()
         scheduler.step()
         
@@ -144,11 +143,11 @@ def train_inverse_problem(x, u_meas, mu_true, bc_indices, u_bc_vals, config, dev
         # Logging
         if i % 500 == 0 or i == iterations - 1:
             mu_min, mu_max, mu_mean = mu_pred.min().item(), mu_pred.max().item(), mu_pred.mean().item()
+            mu_true_min, mu_true_max = mu_true.min().item(), mu_true.max().item()
+            print(f"Iter {i:4d}: PDE={pde_loss_val:.3e}, Data={loss_data.item():.3e}, MuMSE={mu_mse:.3e}, Grad={grad_norm:.3e}")
+            print(f"           mu=[{mu_min:.3f}, {mu_max:.3f}], target=[{mu_true_min:.3f}, {mu_true_max:.3f}]")
             if tv_weight > 0:
-                print(f"Iter {i:4d}: DataLoss={loss_data.item():.6e}, TVLoss={tv_loss.item():.6e}, GradNorm={grad_norm:.3e}")
-            else:
-                print(f"Iter {i:4d}: DataLoss={loss_data.item():.6e}, GradNorm={grad_norm:.3e}")
-            print(f"           Mu: min={mu_min:.3f}, max={mu_max:.3f}, mean={mu_mean:.3f}, MSE={mu_mse:.6e}")
+                print(f"           TV={tv_loss.item():.3e}")
         
         # Early stopping
         if loss_data.item() < best_loss:

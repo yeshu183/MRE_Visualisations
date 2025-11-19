@@ -2,6 +2,7 @@
 numpy>=1.24.0
 scipy>=1.10.0
 matplotlib>=3.7.0
+torch>=2.0.0  # Added for differentiable PIELM model and custom autograd solver
 
 # Data Loading and Preprocessing
 h5py>=3.8.0

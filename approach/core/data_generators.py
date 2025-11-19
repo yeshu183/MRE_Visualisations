@@ -27,8 +27,8 @@ def generate_gaussian_bump(n_points=100, n_wave_neurons=60, device='cpu', seed=0
     """
     x = torch.linspace(0, 1, n_points, device=device).reshape(-1, 1)
     
-    # Ground truth: Gaussian bump (1.0 baseline, peak at 3.0)
-    mu_true = 1.0 + 2.0 * torch.exp(-((x - 0.5) ** 2) / (2 * 0.1**2))
+    # Ground truth: Gentle Gaussian bump (1.0 baseline, peak at 2.0) - EASIER!
+    mu_true = 1.0 + 1.0 * torch.exp(-((x - 0.5) ** 2) / (2 * 0.1**2))
     
     return generate_synthetic_data(
         x, mu_true, n_wave_neurons, device, seed,
@@ -37,7 +37,7 @@ def generate_gaussian_bump(n_points=100, n_wave_neurons=60, device='cpu', seed=0
 
 
 def generate_multiple_inclusions(n_points=100, n_wave_neurons=60, device='cpu', seed=42):
-    """Generate data with two Gaussian inclusions.
+    """Generate data with two stiffness inclusions.
     
     Args:
         n_points: Number of spatial points
@@ -50,9 +50,9 @@ def generate_multiple_inclusions(n_points=100, n_wave_neurons=60, device='cpu', 
     """
     x = torch.linspace(0, 1, n_points, device=device).reshape(-1, 1)
     
-    # Ground truth: Two Gaussian peaks
-    peak1 = 1.5 * torch.exp(-((x - 0.3) ** 2) / (2 * 0.08**2))
-    peak2 = 0.8 * torch.exp(-((x - 0.7) ** 2) / (2 * 0.08**2))
+    # Ground truth: Two gentle Gaussian peaks - EASIER!
+    peak1 = 0.5 * torch.exp(-((x - 0.3) ** 2) / (2 * 0.08**2))
+    peak2 = 0.5 * torch.exp(-((x - 0.7) ** 2) / (2 * 0.08**2))
     mu_true = 1.0 + peak1 + peak2
     
     return generate_synthetic_data(

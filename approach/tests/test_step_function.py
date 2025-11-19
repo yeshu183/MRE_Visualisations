@@ -208,7 +208,7 @@ def plot_comparison(x, u_meas, u_pred, u_true, mu_true, mu_pred, history):
     plt.grid(alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('approach/test_step_function_result.png', dpi=120)
+    plt.savefig(os.path.join(os.path.dirname(__file__), '..', 'results', 'test_step_function_result.png'), dpi=120)
     print(f"\n  Plot saved: approach/test_step_function_result.png")
 
 

@@ -5,47 +5,64 @@ from pielm_solver import pielm_solve
 class StiffnessGenerator(nn.Module):
     """
     Approximates the Stiffness Map mu(x).
-    Input: Spatial coordinates (x)
-    Output: Positive stiffness value
+    Input: Spatial coordinates (x) ∈ [0, 1]
+    Output: Positive stiffness value mu(x)
     
-    Architecture: Deeper network (4 hidden layers, 128 units) for better capacity
+    Architecture: Fourier feature network to encourage spatial variation
     """
-    def __init__(self, input_dim=1, hidden_dim=128):
+    def __init__(self, input_dim=1, hidden_dim=64, n_fourier=10):
         super().__init__()
-        # Deeper network without skip connections (for stability)
+        
+        # Random Fourier features to help with spatial patterns
+        self.register_buffer('B_fourier', torch.randn(input_dim, n_fourier) * 5.0)
+        
+        # Network takes both raw x and Fourier features
+        feature_dim = input_dim + 2 * n_fourier  # x + sin + cos features
+        
         self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(feature_dim, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, 1)
         )
         
-        # Careful initialization: start near middle of expected range [1.0, 3.0]
-        for i, layer in enumerate(self.net):
+        # Standard initialization
+        for layer in self.net:
             if isinstance(layer, nn.Linear):
-                # Very small weight initialization for stability
-                nn.init.xavier_uniform_(layer.weight, gain=0.1)  # Reduced from 0.3
+                nn.init.xavier_uniform_(layer.weight, gain=1.0)
                 if layer.bias is not None:
-                    nn.init.constant_(layer.bias, 0.0)
+                    nn.init.zeros_(layer.bias)
         
-        # Output layer: initialize to produce values near 1.8
-        # Target: softplus(x) + 0.9 ≈ 1.8, so softplus(x) ≈ 0.9
-        # Since softplus(0) ≈ 0.69, softplus(0.5) ≈ 0.97, we want x ≈ 0.5
-        nn.init.normal_(self.net[-1].weight, mean=0, std=0.001)  # Even smaller std
-        nn.init.constant_(self.net[-1].bias, 0.5)
-        
+        # Output layer bias for centering
+        with torch.no_grad():
+            self.net[-1].bias.fill_(0.5)
+    
     def forward(self, x):
-        # Forward pass - no clamping on intermediate values
-        raw = self.net(x)
-        # Softplus ensures positivity, add offset
-        mu = torch.nn.functional.softplus(raw) + 0.9
-        # Loose final bounds to allow learning
-        return torch.clamp(mu, min=0.7, max=6.0)
+        """Forward pass with Fourier features and positivity constraint.
+        
+        Args:
+            x: (N, 1) spatial coordinates ∈ [0, 1]
+            
+        Returns:
+            mu: (N, 1) stiffness values (positive, clamped to reasonable bounds)
+        """
+        # Create Fourier features for better spatial representation
+        z = x @ self.B_fourier  # (N, n_fourier)
+        fourier_features = torch.cat([torch.sin(2 * 3.14159 * z), 
+                                     torch.cos(2 * 3.14159 * z)], dim=1)
+        
+        # Concatenate original x with Fourier features
+        features = torch.cat([x, fourier_features], dim=1)
+        
+        # Pass through network
+        raw = self.net(features)
+        
+        # Softplus for smooth positivity
+        mu = torch.nn.functional.softplus(raw) + 0.5
+        
+        # Clamp to reasonable range
+        return torch.clamp(mu, min=0.5, max=5.0)
 
 class ForwardMREModel(nn.Module):
     """Analysis-by-Synthesis forward model for MRE with locally homogeneous mu assumption.
@@ -90,7 +107,9 @@ class ForwardMREModel(nn.Module):
                      rho_omega2: float,
                      bc_indices: torch.Tensor,
                      u_bc_vals: torch.Tensor,
-                     bc_weight: float = 1.0):
+                     bc_weight: float = 1.0,
+                     u_data: torch.Tensor = None,
+                     data_weight: float = 0.0):
         """Assemble concatenated least-squares system (H, b).
 
         Args:
@@ -101,16 +120,35 @@ class ForwardMREModel(nn.Module):
             bc_indices: (K,) long tensor of boundary indices.
             u_bc_vals: (K,1) boundary displacements.
             bc_weight: scalar weight to emphasize BC enforcement.
+            u_data: (N,1) optional displacement measurements for data constraints.
+            data_weight: scalar weight for data fitting constraints.
         Returns:
-            H_total: (N+K, M) design matrix rows.
-            b_total: (N+K, 1) targets.
+            H_total: (N+K[+N], M) design matrix rows.
+            b_total: (N+K[+N], 1) targets.
         """
         H_pde = (mu_field * phi_lap) + (rho_omega2 * phi)
         b_pde = torch.zeros(phi.shape[0], 1, device=phi.device)
-        H_bc = phi[bc_indices, :] * bc_weight
-        b_bc = u_bc_vals * bc_weight
-        H_total = torch.cat([H_pde, H_bc], dim=0)
-        b_total = torch.cat([b_pde, b_bc], dim=0)
+        
+        # Start with PDE rows
+        H_list = [H_pde]
+        b_list = [b_pde]
+        
+        # Add BC rows if using boundary constraints
+        if bc_weight > 0 and bc_indices is not None:
+            H_bc = phi[bc_indices, :] * bc_weight
+            b_bc = u_bc_vals * bc_weight
+            H_list.append(H_bc)
+            b_list.append(b_bc)
+        
+        # Add data constraint rows if provided
+        if data_weight > 0 and u_data is not None:
+            H_data = phi * data_weight
+            b_data = u_data * data_weight
+            H_list.append(H_data)
+            b_list.append(b_data)
+        
+        H_total = torch.cat(H_list, dim=0)
+        b_total = torch.cat(b_list, dim=0)
         return H_total, b_total
 
     def solve_given_mu(self,
@@ -120,15 +158,29 @@ class ForwardMREModel(nn.Module):
                        u_bc_vals: torch.Tensor,
                        rho_omega2: float,
                        bc_weight: float = 1.0,
+                       u_data: torch.Tensor = None,
+                       data_weight: float = 0.0,
                        verbose: bool = False):
         """Solve wavefield for a provided stiffness (no dependence on mu_net).
 
+        Args:
+            x_col: (N,dim) collocation points.
+            mu_field: (N,1) stiffness values.
+            bc_indices: (K,) indices for Dirichlet BC.
+            u_bc_vals: (K,1) boundary displacements.
+            rho_omega2: scalar ρ ω².
+            bc_weight: emphasis weight for BC rows.
+            u_data: (N,1) optional displacement measurements.
+            data_weight: emphasis weight for data constraints.
+            verbose: enable solver diagnostics.
         Returns:
             u_pred: (N,1) displacement.
             C_u: (M,1) coefficient vector.
         """
         phi, phi_lap = self.get_basis_and_laplacian(x_col)
-        H, b = self.build_system(mu_field, phi, phi_lap, rho_omega2, bc_indices, u_bc_vals, bc_weight)
+        H, b = self.build_system(mu_field, phi, phi_lap, rho_omega2, 
+                                 bc_indices, u_bc_vals, bc_weight,
+                                 u_data, data_weight)
         C_u = pielm_solve(H, b, verbose=verbose)
         u_pred = phi @ C_u
         return u_pred, C_u
@@ -139,6 +191,8 @@ class ForwardMREModel(nn.Module):
                 u_bc_vals: torch.Tensor,
                 rho_omega2: float,
                 bc_weight: float = 1.0,
+                u_data: torch.Tensor = None,
+                data_weight: float = 0.0,
                 verbose: bool = False):
         """Compute (u_pred, mu_pred) using learned mu.
 
@@ -148,6 +202,8 @@ class ForwardMREModel(nn.Module):
             u_bc_vals: (K,1) boundary displacements.
             rho_omega2: scalar ρ ω².
             bc_weight: emphasis weight for BC rows.
+            u_data: (N,1) optional displacement measurements.
+            data_weight: emphasis weight for data constraints.
             verbose: enable solver diagnostics.
         Returns:
             u_pred: (N,1)
@@ -155,7 +211,9 @@ class ForwardMREModel(nn.Module):
         """
         mu_pred = self.mu_net(x_col)
         phi, phi_lap = self.get_basis_and_laplacian(x_col)
-        H, b = self.build_system(mu_pred, phi, phi_lap, rho_omega2, bc_indices, u_bc_vals, bc_weight)
+        H, b = self.build_system(mu_pred, phi, phi_lap, rho_omega2, 
+                                 bc_indices, u_bc_vals, bc_weight,
+                                 u_data, data_weight)
         C_u = pielm_solve(H, b, verbose=verbose)
         u_pred = phi @ C_u
         return u_pred, mu_pred

@@ -11,7 +11,7 @@ import torch
 import json
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from models import ForwardMREModel
 from pielm_solver import DifferentiablePIELM
@@ -24,7 +24,7 @@ print("CORE COMPONENT VALIDATION")
 print("="*70)
 
 # Load config
-with open('approach/config_forward.json', 'r') as f:
+with open(os.path.join(os.path.dirname(__file__), '..', 'config_forward.json'), 'r') as f:
     config = json.load(f)
 
 # Test setup

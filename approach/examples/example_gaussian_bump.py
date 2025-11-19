@@ -10,17 +10,14 @@ import os
 import sys
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from core import (
-    generate_gaussian_bump,
-    train_inverse_problem,
-    evaluate_reconstruction,
-    plot_results
-)
+from core.data_generators import generate_gaussian_bump
+from core.solver import train_inverse_problem, evaluate_reconstruction
+from core.visualization import plot_results
 
-# Configuration
-CONFIG_FILE = 'approach/config_forward.json'
+# Configuration - get path relative to this file
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), '..', 'config_forward.json')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -67,9 +64,11 @@ def main():
     )
     
     # Visualize
+    results_dir = os.path.join(os.path.dirname(__file__), '..', 'results')
+    os.makedirs(results_dir, exist_ok=True)
     plot_results(
         x, u_meas, u_pred, u_true, mu_true, mu_pred, history,
-        save_path='approach/results_gaussian_bump.png',
+        save_path=os.path.join(results_dir, 'gaussian_bump_data.png'),
         title_suffix=" (Gaussian Bump)"
     )
     
