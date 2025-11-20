@@ -1,0 +1,17 @@
+{
+  "description": "Simplest configuration - minimal BCs, z-component, effective physics",
+  "displacement_mode": "z_component",
+  "boundary_strategy": "minimal",
+  "stiffness_strategy": "direct",
+  "physics_mode": "effective",
+  "mu_min": 0.2,
+  "mu_max": 1.2,
+  "data_weight": 100.0,
+  "bc_weight": 10.0,
+  "tv_weight": 0.001,
+  "l2_weight": 0.0,
+  "n_wave_neurons": 100,
+  "lr": 0.01,
+  "iterations": 3000,
+  "subsample": 1000
+}
