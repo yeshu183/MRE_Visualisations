@@ -1,0 +1,61 @@
+
+BIOQIC Phase 1 Box Phantom - Data Summary
+==========================================
+
+Dataset Properties:
+-------------------
+- Grid shape: (100, 80, 10)
+- Total points: 80,000
+- Voxel size: 1.000 mm
+- Frequency: 60 Hz
+- Angular frequency: 376.99 rad/s
+
+Physical Domain:
+----------------
+- X range: [0.0000, 0.0790] m = [0.0, 79.0] mm
+- Y range: [0.0000, 0.0990] m = [0.0, 99.0] mm
+- Z range: [0.0000, 0.0090] m = [0.0, 9.0] mm
+- Volume: ~70.39 cm³
+
+Displacement Field:
+-------------------
+- Total magnitude range: [0.000182, 0.028137] m = [182.42, 28136.71] μm
+- Mean total displacement: 0.011030 m = 11030.07 μm
+- Component X: [0.000000, 0.003191] m = [0.00, 3190.70] μm
+- Component Y: [0.000002, 0.002191] m = [2.00, 2191.36] μm
+- Component Z: [0.000000, 0.028125] m = [0.00, 28125.24] μm
+
+Stiffness Field (Ground Truth):
+-------------------------------
+- Storage modulus (μ'): [3000.0, 10000.0] Pa
+- Mean μ': 3382.4 ± 1590.7 Pa
+- Loss modulus (μ''): [377.0, 377.0] Pa
+- Mean μ'': 377.0 ± 0.0 Pa
+- Loss tangent: 0.1115
+- Stiffness contrast: 3.33× (soft to stiff)
+
+Key Observations:
+-----------------
+1. Displacement is on the order of ~11030.1 μm (typical for MRE at 60 Hz)
+2. Stiffness range is 3.3× (from 3000 to 10000 Pa)
+3. Background stiffness: ~3000 Pa (soft gel)
+4. Inclusion stiffness: ~10000 Pa (stiffer targets)
+5. Loss tangent ~0.111 suggests moderate viscoelasticity
+6. Data appears to be clean FEM simulation (low noise, well-defined boundaries)
+
+Correlation Analysis:
+---------------------
+- Displacement vs X: 0.4481
+- Displacement vs Y: -0.0205
+- Displacement vs Z: 0.0043
+- Displacement vs Stiffness: -0.0992
+
+Recommended Next Steps:
+-----------------------
+1. **Use full 3-component complex displacement** for richer constraints
+2. **Identify actual excitation boundaries** from displacement/phase patterns
+3. **Test on 2D slice** (e.g., mid-Z plane) before full 3D
+4. **Subsample intelligently** (keep high-gradient regions, boundaries)
+5. **Consider multi-frequency** if additional frequencies available
+6. **Use proper physics scaling** (ρω² with Laplacian rescaling)
+7. **Regularize toward mean stiffness** rather than unconstrained
