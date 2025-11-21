@@ -51,6 +51,24 @@ from trainer import MRETrainer
 # =============================================================================
 
 EXPERIMENTS = {
+    'data_only': {
+        'description': '🔥 DATA-ONLY: No PDE, pure data fitting (since data is PDE-inconsistent)',
+        'displacement_mode': 'z_component',
+        'boundary_strategy': 'minimal',
+        'stiffness_strategy': 'direct',
+        'physics_mode': 'effective',
+        'mu_min': 0.2,
+        'mu_max': 1.2,
+        'data_weight': 1000.0,  # Very high - only fitting data
+        'bc_weight': 1.0,       # Minimal - just for uniqueness
+        'tv_weight': 0.1,       # Higher TV to prevent overfitting
+        'l2_weight': 0.0,
+        'n_wave_neurons': 200,  # More basis for better fit
+        'lr': 0.001,            # Lower LR for stability
+        'iterations': 5000,
+        'subsample': 2000       # More data points
+    },
+    
     'baseline': {
         'description': 'Simplest configuration - minimal BCs, z-component, effective physics',
         'displacement_mode': 'z_component',
