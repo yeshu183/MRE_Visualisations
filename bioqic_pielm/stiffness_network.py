@@ -31,7 +31,7 @@ class StiffnessNetwork(nn.Module):
         n_fourier: int = 10,
         mu_min: float = 0.0,
         mu_max: float = 1.0,
-        fourier_scale: float = 5.0,
+        fourier_scale: float = 10.0,  # Increased from 5.0 to 10.0 for sharper features
         seed: int = 42
     ):
         """
@@ -81,9 +81,20 @@ class StiffnessNetwork(nn.Module):
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
 
-        # Output bias for centering
+        # --- CRITICAL CHANGE: FORCE FLAT INITIALIZATION ---
+        # We want the network to start by predicting a constant background value.
+        # This prevents it from getting stuck in random local minima.
         with torch.no_grad():
-            self.net[-1].bias.fill_(0.0)
+            # 1. Zero out the last layer weights (removes spatial variation)
+            self.net[-1].weight.fill_(0.0)
+            
+            # 2. Set bias to specific value. 
+            # Our range is [3000, 10000]. We want approx 3500.
+            # Normalized target = (3500 - 3000) / (10000 - 3000) ≈ 0.07
+            # Inverse Sigmoid(0.07) ≈ -2.5
+            self.net[-1].bias.fill_(-2.5) 
+            
+        print("  [Network] Initialized to flat background (~3500 Pa)")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute stiffness at spatial locations.

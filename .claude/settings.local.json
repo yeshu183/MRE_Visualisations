@@ -1,11 +1,14 @@
 {
   "permissions": {
     "allow": [
+      "Bash(python:*)",
+      "Bash(conda activate:*)",
       "Bash(dir:*)",
       "Bash(nul)",
-      "Bash(del /q bernstein_basis.py pielm_helmholtz_bernstein.py forward_optimization_result.png phase1_error_analysis.png phase1_training_results.png physics_module.py pielm_example.py pielm_helmholtz.py pielm_mre.py test_pielm_helmholtz.py test_pielm_helmholtz_results.png train_bioqic_phase1.py train_bioqic_phase1_v2.py train_phase1_pielm.py 2)",
-      "Bash(Remove-Item \"c:\\Users\\Yeshwanth Kesav\\Desktop\\MRE_Visualisations\\*.py\" -Force)",
-      "Bash(Remove-Item \"c:\\Users\\Yeshwanth Kesav\\Desktop\\MRE_Visualisations\\*.png\" -Force)"
+      "Bash(conda env:*)",
+      "Bash(findstr:*)",
+      "Bash(del \"c:\\Users\\Yeshwanth Kesav\\Desktop\\MRE_Visualisations\\bioqic_pielm\\test_gradient_term_effect.py\")",
+      "Bash(conda run:*)"
     ],
     "deny": [],
     "ask": []

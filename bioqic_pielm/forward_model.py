@@ -18,9 +18,12 @@ For BIOQIC viscoelastic data:
 
 import torch
 import torch.nn as nn
-import numpy as np
-from .pielm_solver import pielm_solve
-from .stiffness_network import StiffnessNetwork
+try:
+    from .pielm_solver import pielm_solve
+    from .stiffness_network import StiffnessNetwork
+except ImportError:
+    from pielm_solver import pielm_solve
+    from stiffness_network import StiffnessNetwork
 
 
 class ForwardMREModel(nn.Module):
@@ -40,9 +43,10 @@ class ForwardMREModel(nn.Module):
         omega_basis: float = 15.0,
         hidden_dim: int = 64,
         n_fourier: int = 10,
-        mu_min: float = 0.0,
-        mu_max: float = 1.0,
-        seed: int = 42
+        mu_min: float = 1.0,  # Changed: normalized range [1, 2] like approach folder
+        mu_max: float = 2.0,
+        seed: int = 42,
+        basis_type: str = 'sin'  # 'sin' or 'tanh'
     ):
         """
         Initialize forward model.
@@ -55,6 +59,7 @@ class ForwardMREModel(nn.Module):
             n_fourier: Fourier features for stiffness network
             mu_min, mu_max: Stiffness output bounds (normalized)
             seed: Random seed for reproducibility
+            basis_type: 'sin' for Fourier basis, 'tanh' for tanh basis
         """
         super().__init__()
 
@@ -62,6 +67,8 @@ class ForwardMREModel(nn.Module):
 
         self.input_dim = input_dim
         self.n_wave = n_wave_neurons
+        self.basis_type = basis_type
+        self.omega_basis = omega_basis
 
         # Stiffness network
         self.mu_net = StiffnessNetwork(
@@ -73,19 +80,33 @@ class ForwardMREModel(nn.Module):
             seed=seed
         )
 
-        # Random Fourier wave basis (frozen)
+        # Random basis weights and biases (frozen)
+        # W: (input_dim, n_neurons), b: (1, n_neurons)
         self.register_buffer(
             'B', torch.randn(input_dim, n_wave_neurons) * omega_basis
         )
         self.register_buffer(
-            'phi_bias', torch.rand(1, n_wave_neurons) * 2 * np.pi
+            'phi_bias', torch.randn(1, n_wave_neurons) * omega_basis  # Random bias
         )
+
+        # RBF centers: random points in domain [0, 0.1]^dim (SI units, ~0.1m domain)
+        self.register_buffer(
+            'rbf_centers', torch.rand(n_wave_neurons, input_dim) * 0.1
+        )
+        # RBF width parameter (sigma): omega_basis = 1/sigma
+        self.rbf_sigma = 1.0 / omega_basis if omega_basis > 0 else 0.1
 
     def get_basis_and_laplacian(self, x: torch.Tensor):
         """Compute basis functions and their Laplacians.
 
-        Basis: φ_j(x) = sin(ω_j · x + b_j)
-        Laplacian: ∇²φ_j = -||ω_j||² φ_j
+        For sin basis:
+            φ_j(x) = sin(w_j · x + b_j)
+            ∇²φ_j = -||w_j||² φ_j
+
+        For tanh basis:
+            φ_j(x) = tanh(w_j · x + b_j)
+            ∇²φ_j = -2 * tanh * sech² * ||w_j||²
+                  = -2 * φ * (1 - φ²) * ||w_j||²
 
         Args:
             x: (N, dim) spatial coordinates
@@ -95,9 +116,31 @@ class ForwardMREModel(nn.Module):
             phi_lap: (N, M) Laplacian values
         """
         Z = x @ self.B + self.phi_bias  # (N, M)
-        phi = torch.sin(Z)
         freq_sq = torch.sum(self.B ** 2, dim=0, keepdim=True)  # (1, M)
-        phi_lap = -phi * freq_sq
+
+        if self.basis_type == 'sin':
+            phi = torch.sin(Z)
+            phi_lap = -phi * freq_sq
+        elif self.basis_type == 'tanh':
+            phi = torch.tanh(Z)
+            # d²/dz² tanh(z) = -2 * tanh(z) * sech²(z) = -2 * tanh(z) * (1 - tanh²(z))
+            # For φ = tanh(w·x + b), ∇²φ = φ'' * ||w||²
+            phi_lap = -2 * phi * (1 - phi ** 2) * freq_sq
+        elif self.basis_type == 'rbf':
+            # RBF: φ_j(x) = exp(-||x - c_j||² / (2σ²))
+            # Compute squared distances: ||x - c||²
+            # x: (N, dim), centers: (M, dim)
+            diff = x.unsqueeze(1) - self.rbf_centers.unsqueeze(0)  # (N, M, dim)
+            r_sq = torch.sum(diff ** 2, dim=2)  # (N, M)
+            sigma_sq = self.rbf_sigma ** 2
+            phi = torch.exp(-r_sq / (2 * sigma_sq))
+            # Laplacian of Gaussian RBF:
+            # ∇²φ = φ * (||x-c||² - dim*σ²) / σ⁴
+            dim = self.input_dim
+            phi_lap = phi * (r_sq - dim * sigma_sq) / (sigma_sq ** 2)
+        else:
+            raise ValueError(f"Unknown basis_type: {self.basis_type}")
+
         return phi, phi_lap
 
     def build_system(
@@ -133,8 +176,8 @@ class ForwardMREModel(nn.Module):
             H: Design matrix
             b: Target vector
         """
-        # PDE rows: μ·∇²φ + ρω²·φ = 0
-        H_pde = (mu_field * phi_lap) + (rho_omega2 * phi)
+        # PDE rows: (μ/ρω²)·∇²φ + φ = 0  (normalized by ρω² for balanced terms)
+        H_pde = (mu_field / rho_omega2) * phi_lap + phi
         b_pde = torch.zeros(phi.shape[0], 1, device=phi.device)
 
         H_list = [H_pde]

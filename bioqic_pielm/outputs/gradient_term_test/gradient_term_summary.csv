@@ -1,0 +1,4 @@
+neurons,const_no_blob_r2,const_with_blob_r2,hetero_no_blob_r2,hetero_with_blob_r2,const_improvement,hetero_improvement,discrimination_no_grad,discrimination_with_grad,discrimination_improvement
+1000,,,0.7961808741092682,0.740660548210144,,-0.055520325899124146,,,
+5000,,,0.8292804807424545,0.8318829834461212,,0.002602502703666687,,,
+10000,,,0.8015721291303635,0.8134471625089645,,0.011875033378601074,,,

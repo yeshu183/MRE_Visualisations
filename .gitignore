@@ -67,3 +67,5 @@ Thumbs.db
 *.tmp
 *.bak
 new_env/
+.claude
+nul
